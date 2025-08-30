@@ -313,7 +313,92 @@
 
     // Klaviatura ilə səs: boşluq = mini beep (uşaqlar təcrübə eləsin)
     window.addEventListener('keydown', (e)=>{ if(e.code==='Space'){ beep(520,.08,'square'); } });
+  let level = 1;            // yeni level dəyişəni
+let balloonCount = 0;     // kliklənmiş balon sayını sayır
+
+// Level göstərmə funksiyası
+const levelEl = document.createElement('div');
+levelEl.style.position='fixed';
+levelEl.style.top='50%';
+levelEl.style.left='50%';
+levelEl.style.transform='translate(-50%,-50%)';
+levelEl.style.fontSize='48px';
+levelEl.style.fontWeight='900';
+levelEl.style.color='var(--accent)';
+levelEl.style.zIndex='9';
+levelEl.style.display='none';
+document.body.appendChild(levelEl);
+
+function showLevel(num){
+  levelEl.textContent = 'Level '+num;
+  levelEl.style.display='block';
+  setTimeout(()=> levelEl.style.display='none',1500);
+}
+
+// Balon klik funksiyasını dəyişirik ki, bomba və level də işləsin
+function popBalloon(e){
+  const b = e.currentTarget;
+  if(b.classList.contains('popped') || !running) return;
+
+  // Bomba yoxsa, balon patlasın
+  if(b.dataset.bomb==='true'){
+    alert('Bomba! Oyun bitdi.');
+    endGame();
+    return;
+  }
+
+  b.classList.add('popped','pop');
+  score += Number(b.dataset.points||1);
+  balloonCount++;           // balon sayını artır
+  updateHUD();
+  beep(740, .07, 'triangle'); 
+  sprinkle(b.getBoundingClientRect().left + b.offsetWidth/2, b.getBoundingClientRect().top);
+  setTimeout(()=> b.remove(), 220);
+
+  // Level yoxla
+  if(balloonCount % 50 === 0){
+    level++;
+    showLevel(level);
+    // balon spawn sürətini artırmaq üçün intervalı yenidən qura bilərik
+    clearInterval(spawnTimer);
+    spawnTimer = setInterval(spawnFunction, 700 / level);
+  }
+}
+
+// Spawn funksiyasını yarat
+function spawnFunction(){
+  if(!running) return;
+  // 10% ehtimalla bomba, qalan 90% balon
+  if(Math.random()<0.1){
+    createBomb();
+  } else {
+    createBalloon();
+  }
+}
+
+// Bomba yaratma funksiyası
+function createBomb(){
+  const b = document.createElement('div');
+  b.className = 'balloon';
+  b.dataset.bomb='true';
+  b.style.background = 'linear-gradient(180deg, #333 0%, #555 100%)'; // qara balon kimi göstər
+  b.style.left = `${rand(4,84)}vw`;
+  const size = 1;
+  b.style.width = `${100*size}px`;
+  const duration = rand(4,7) / level;
+  b.style.animation = `floatUp ${duration}s linear forwards`;
+  b.addEventListener('pointerdown', popBalloon);
+  b.addEventListener('animationend', ()=> b.remove());
+  game.appendChild(b);
+}
+
+// Spawn timer-i startGame içində belə dəyişdir
+spawnTimer = setInterval(spawnFunction, 700 / level);
+
   </script>
 </body>
 </html>
+
+
+
 
