@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Balon Patlat 🎈 – Uşaqlar üçün mini oyun</title>
+  <style>
+    /* ===== ÜMUMİ STİL ===== */
+    :root{
+      --bg1:#a1c4fd; /* açıq göy */
+      --bg2:#c2e9fb; /* daha açıq */
+      --accent:#ff6b6b; /* vurğu rəngi */
+      --text:#0b2545;  /* tünd mavi */
+      --good:#2ecc71;  /* yaşıl */
+      --bad:#e74c3c;   /* qırmızı */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"}
+    body{ 
+      background: linear-gradient(180deg,var(--bg1),var(--bg2));
+      overflow:hidden;
+      user-select:none;
+      color:var(--text);
+    }
+
+    /* ===== ÜST PANEL ===== */
+    .hud{
+      position:fixed;inset:16px 16px auto 16px;display:flex;gap:12px;align-items:center;justify-content:center;
+      font-weight:700;z-index:5;flex-wrap:wrap;
+    }
+    .pill{background:#ffffffaa;backdrop-filter: blur(6px);border-radius:999px;padding:10px 16px;box-shadow:0 6px 16px #0001;}
+    .pill span{font-variant-numeric:tabular-nums}
+    .btn{cursor:pointer;border:none;outline:0;background:var(--accent);color:#fff;border-radius:999px;padding:10px 18px;font-weight:800;letter-spacing:.3px;box-shadow:0 8px 20px #ff6b6b55;transition:.2s transform}
+    .btn:active{transform:scale(.98)}
+
+    /* ===== OYUN SAHƏSİ ===== */
+    #game{
+      position:relative;width:100vw;height:100vh;overflow:hidden;
+    }
+
+    /* ===== START/FINISH EKRANI ===== */
+    .overlay{
+      position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(180deg,#ffffffdd,#ffffffbb);z-index:10;
+    }
+    .card{ 
+      width:min(680px,92vw);background:#fff;border-radius:24px;padding:28px;box-shadow:0 16px 40px #00000022; text-align:center;
+    }
+    h1{margin:0 0 6px 0;font-size:clamp(28px,5vw,44px)}
+    p{margin:6px 0 14px 0;line-height:1.5}
+    .tips{font-size:14px;opacity:.8}
+
+    /* ===== BALON ===== */
+    .balloon{
+      position:absolute;bottom:-140px;width:100px;aspect-ratio:1/1.25;border-radius:50% 50% 45% 45%;
+      box-shadow:inset -12px -14px 30px #00000015, inset 10px 12px 18px #ffffffcc;
+      display:grid;place-items:center;cursor:pointer;transform:translateZ(0);
+    }
+    .knot{position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:12px solid #0008;filter:blur(.3px)}
+    .string{position:absolute;bottom:-90px;left:50%;transform:translateX(-50%);width:2px;height:90px;background:#0002}
+
+    /* Parıltı */
+    .shine{position:absolute;top:18%;left:24%;width:18%;height:28%;background:linear-gradient(180deg,#ffffffcc,#ffffff00);border-radius:50%;filter:blur(1px)}
+
+    /* Uçuş animasiyası (fərqli müddətlər veriləcək) */
+    @keyframes floatUp{to{transform:translateY(-120vh)}}
+
+    /* Patlama animasiyası */
+    .pop{
+      animation:none !important;
+      transform-origin:center;
+      animation: popScale .25s ease-out forwards;
+      box-shadow:none;
+      opacity:.9;
+    }
+    @keyframes popScale{
+      0%{transform:scale(1)}
+      80%{transform:scale(1.25);opacity:.6}
+      100%{transform:scale(.05);opacity:0}
+    }
+
+    /* Konfetti */
+    .confetti{
+      position:absolute;inset:0;pointer-events:none;overflow:hidden;
+    }
+    .piece{
+      position:absolute;width:10px;height:14px;opacity:.9;
+      animation: fall linear forwards;
+    }
+    @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:1}}
+
+    /* Kiçik ekranlar üçün */
+    @media (max-width: 600px){
+      .balloon{width:76px}
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <!-- HUD (üst məlumat paneli) -->
+    <div class="hud">
+      <div class="pill">Xal: <span id="score">0</span></div>
+      <div class="pill">Vaxt: <span id="time">30</span>s</div>
+      <div class="pill">Həyat: <span id="lives">❤❤❤</span></div>
+      <button id="restartTop" class="btn" style="display:none">Yenidən Oyna</button>
+    </div>
+
+    <!-- Start ekranı -->
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h1>Balon Patlat 🎈</h1>
+        <p>Balonları kliklə (və ya ekranda toxun) və patlat!<br> 30 saniyədə mümkün qədər çox xal topla.</p>
+        <p class="tips">Məsləhət: Bəzi balonlar daha kiçik və sürətlidir – onlar daha çox xal gətirir. Balon ekrandan çıxsa, bir ❤ itirirsən.</p>
+        <button id="startBtn" class="btn">Başla</button>
+      </div>
+    </div>
+
+    <!-- Konfetti layer -->
+    <div id="confetti" class="confetti"></div>
+  </div>
+
+  <script>
+    // =========================
+    // Sadə, öyrədici oyun məntiqi
+    // Şərhlər AZ dilindədir ki, uşaqlar asan başa düşsün ✅
+    // =========================
+
+    const game = document.getElementById('game');
+    const scoreEl = document.getElementById('score');
+    const timeEl = document.getElementById('time');
+    const livesEl = document.getElementById('lives');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const restartTop = document.getElementById('restartTop');
+    const confettiLayer = document.getElementById('confetti');
+
+    let score = 0;
+    let timeLeft = 30;          // oyun müddəti (saniyə)
+    let lives = 3;              // neçə səhvə icazə var
+    let spawnTimer = null;      // balon yaratma intervallı
+    let countdownTimer = null;  // vaxt sayacı
+    let running = false;        // oyun gedir/gedimir
+
+    // Səs üçün Web Audio (xarici fayl yoxdur, brauzer özü səs yaradır)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f=600, t=0.08, type='sine'){
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type; o.frequency.setValueAtTime(f, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t);
+      o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + t);
+    }
+
+    function updateHUD(){
+      scoreEl.textContent = score;
+      timeEl.textContent = timeLeft;
+      livesEl.textContent = '❤'.repeat(lives);
+      restartTop.style.display = running ? 'none' : 'inline-flex';
+    }
+
+    function rand(min, max){ return Math.random()*(max-min)+min; }
+
+    // Balonun DOM elementini yaradırıq
+    function createBalloon(){
+      const b = document.createElement('div');
+      b.className = 'balloon';
+
+      // Rəng – uşaqlara maraqlı olsun deyə, şən gradientlər
+      const hue = Math.floor(rand(0,360));
+      const color = `linear-gradient(180deg, hsl(${hue} 95% 75%), hsl(${(hue+20)%360} 90% 60%))`;
+      b.style.background = color;
+
+      // Başlanğıc X mövqeyi (soldan faizlə)
+      b.style.left = `${rand(4, 84)}vw`;
+
+      // Sürət və ölçü: kiçik balon = daha sürətli = daha çox xal
+      const size = rand(0.7, 1.2);
+      b.style.width = `${100*size}px`;
+      const duration = rand(4 - (size-1)*3, 8 - (size-1)*4); // kiçik balon daha sürətli
+      b.style.animation = `floatUp ${duration}s linear forwards`;
+
+      // Xal dəyəri (kiçik & sürətli olanda 3 xal, orta 2, böyük 1)
+      const points = size < 0.9 ? 3 : (size < 1.05 ? 2 : 1);
+      b.dataset.points = points;
+
+      // Kiçik detalları əlavə edək
+      const knot = document.createElement('div'); knot.className = 'knot'; b.appendChild(knot);
+      const string = document.createElement('div'); string.className = 'string'; b.appendChild(string);
+      const shine = document.createElement('div'); shine.className = 'shine'; b.appendChild(shine);
+
+      // Klik/touch zamanı patlasın
+      b.addEventListener('pointerdown', popBalloon);
+
+      // Animasiya bitəndə (yuxarı çıxanda) – həyat azalsın
+      b.addEventListener('animationend', () => { 
+        if(!b.classList.contains('popped')){ missBalloon(b); }
+        b.remove();
+      });
+
+      game.appendChild(b);
+    }
+
+    function popBalloon(e){
+      const b = e.currentTarget;
+      if(b.classList.contains('popped') || !running) return;
+      b.classList.add('popped','pop');
+      score += Number(b.dataset.points||1);
+      updateHUD();
+      beep(740, .07, 'triangle'); // şən "pop" səsi
+      // kiçik ulduzcuqlar (konfetti) – motivasiya üçün
+      sprinkle(b.getBoundingClientRect().left + b.offsetWidth/2, b.getBoundingClientRect().top);
+      setTimeout(()=> b.remove(), 220);
+    }
+
+    function missBalloon(b){
+      if(!running) return;
+      lives = Math.max(0, lives-1);
+      updateHUD();
+      flash('#ffdddd');
+      beep(220, .1, 'sawtooth');
+      if(lives === 0) endGame();
+    }
+
+    function flash(color){
+      const f = document.createElement('div');
+      f.style.position='fixed'; f.style.inset='0'; f.style.background=color; f.style.opacity='0.6'; f.style.transition='opacity .25s'; f.style.pointerEvents='none'; f.style.zIndex='9';
+      document.body.appendChild(f);
+      requestAnimationFrame(()=>{ f.style.opacity='0'; setTimeout(()=>f.remove(),260);});
+    }
+
+    // Rəngli konfetti hissələri
+    function sprinkle(x,y){
+      for(let i=0;i<10;i++){
+        const piece = document.createElement('div');
+        piece.className='piece';
+        const hue = Math.floor(Math.random()*360);
+        piece.style.background = `hsl(${hue} 90% 55%)`;
+        piece.style.left = (x + (Math.random()*60-30)) + 'px';
+        piece.style.top = (y + (Math.random()*20-10)) + 'px';
+        const dur = rand(0.8,1.8);
+        const delay = Math.random()*0.05;
+        piece.style.animationDuration = `${dur}s`;
+        piece.style.animationDelay = `${delay}s`;
+        confettiLayer.appendChild(piece);
+        setTimeout(()=> piece.remove(), (dur+delay)*1000+100);
+      }
+    }
+
+    function startGame(){
+      score = 0; timeLeft = 30; lives = 3; running = true;
+      overlay.style.display='none';
+      updateHUD();
+
+      // Balonlar fasilələrlə yaransın (sürət yavaş-yavaş artsın)
+      let spawnRate = 700; // ms
+      spawnTimer = setInterval(()=>{
+        for(let i=0;i< (Math.random()<0.25 ? 2:1); i++) createBalloon();
+        // vaxt keçdikcə bir az tezləşdiririk
+        if(spawnRate>420) spawnRate -= 2;
+      }, spawnRate);
+
+      // Vaxt sayacı
+      countdownTimer = setInterval(()=>{
+        timeLeft -= 1; updateHUD();
+        if(timeLeft<=0){ endGame(); }
+      },1000);
+    }
+
+    function endGame(){
+      if(!running) return; running=false;
+      clearInterval(spawnTimer); clearInterval(countdownTimer);
+      // Ekranda nəticə kartı
+      const message = `<h1>Əla iş! ✨</h1>
+        <p>Topladığın xal: <b>${score}</b></p>
+        <p>${score>=30? 'Sən super balon ustasısan! 🏆' : (score>=15? 'Gözəl nəticə! Daha da çox məşq et! 💪' : 'Başlanğıc üçün pis deyil! Yenidən cəhd et! 🙂')}</p>`
+      showOverlay(message);
+      restartTop.style.display='inline-flex';
+      // Böyük konfetti yağışı
+      bigConfetti();
+    }
+
+    function showOverlay(html){
+      overlay.innerHTML = `<div class=card>${html}<button id=again class=btn>Yenidən Oyna</button></div>`;
+      overlay.style.display='grid';
+      document.getElementById('again').addEventListener('click', startGame);
+    }
+
+    function stopAll(){
+      clearInterval(spawnTimer); clearInterval(countdownTimer);
+      document.querySelectorAll('.balloon').forEach(b=>b.remove());
+    }
+
+    function bigConfetti(){
+      // Ekranın yuxarısından çoxlu parça salaq
+      for(let i=0;i<140;i++){
+        const piece = document.createElement('div');
+        piece.className='piece';
+        const hue = Math.floor(Math.random()*360);
+        piece.style.background = `hsl(${hue} 90% 55%)`;
+        piece.style.left = Math.random()*window.innerWidth + 'px';
+        piece.style.top = '-20px';
+        const dur = rand(1.8,3.2);
+        piece.style.animationDuration = `${dur}s`;
+        confettiLayer.appendChild(piece);
+        setTimeout(()=> piece.remove(), dur*1000+200);
+      }
+    }
+
+    // Hadisələr
+    startBtn.addEventListener('click', ()=>{ stopAll(); startGame(); });
+    restartTop.addEventListener('click', ()=>{ stopAll(); startGame(); });
+
+    // Klaviatura ilə səs: boşluq = mini beep (uşaqlar təcrübə eləsin)
+    window.addEventListener('keydown', (e)=>{ if(e.code==='Space'){ beep(520,.08,'square'); } });
+  </script>
+</body>
+</html>
+
